@@ -3,19 +3,56 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { CdkMultipleEnvironmentsStack } from '../lib/cdk-multiple-environments-stack';
 
+import gitBranch from 'git-branch';
+import { CDKContext } from '../types';
+
 const app = new cdk.App();
-new CdkMultipleEnvironmentsStack(app, 'CdkMultipleEnvironmentsStack', {
-  /* If you don't specify 'env', this stack will be environment-agnostic.
-   * Account/Region-dependent features and context lookups will not work,
-   * but a single synthesized template can be deployed anywhere. */
+const createStacks = async () => {
+  try {
+   const app = new cdk.App();
+   const context = await getContext(app); 
 
-  /* Uncomment the next line to specialize this stack for the AWS Account
-   * and Region that are implied by the current CLI configuration. */
-  // env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: process.env.CDK_DEFAULT_REGION },
+   const tags: any = {
+    Environment: context.environment,
+   };
 
-  /* Uncomment the next line if you know exactly what Account and Region you
-   * want to deploy the stack to. */
-  // env: { account: '123456789012', region: 'us-east-1' },
+   const stackProps: cdk.StackProps = {
+    env: {
+      region: context.region,
+      account: context.accountNumber,
+    },
+    stackName: `${context.appName}-stack-${context.environment}`,
+    description: `This is the Stack Description`,
+    tags,
+   };
 
-  /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
-});
+   new CdkMultipleEnvironmentsStack(app, `${context.appName}-stack-${context.environment}`, stackProps, context);
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+// Get CDK Context based on git branch
+export const getContext = async (app: cdk.App): Promise<CDKContext> => {
+  return new Promise(async (resolve, reject) => { 
+    try {
+      const currentBranch = await gitBranch();
+      console.log(`Current git branch: ${currentBranch}`);
+
+      const environment = app.node.tryGetContext('environments').find((e: any) => e.branchName === currentBranch);
+      console.log(`Environment:`);
+      console.log(JSON.stringify(environment, null, 2));
+
+      const globals = app.node.tryGetContext('globals');
+      console.log(`Globals:`);
+      console.log(JSON.stringify(globals, null, 2));
+
+      return resolve({ ...globals, ...environment });
+    } catch (error) {
+      console.error(error);
+      return reject();
+    }
+  })
+};
+
+createStacks();
